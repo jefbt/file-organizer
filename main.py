@@ -2,6 +2,7 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
+import re
 from PIL import Image
 import threading
 from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -214,8 +215,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         options_frame = ctk.CTkFrame(tab, fg_color="transparent")
         options_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
+        # Start Number Input (Hidden by default, created first to be safe)
+        self.rename_start_input = ctk.CTkEntry(options_frame, placeholder_text="Start #", width=60,
+                                               border_color=GOLD, fg_color=BLACK, text_color=GOLD)
+
         # Dropdown
-        self.rename_option_var = ctk.StringVar(value="After X characters")
+        self.rename_option_var = ctk.StringVar(value="Ordered renaming") # Set as default to test
         self.rename_option_menu = ctk.CTkOptionMenu(options_frame, 
                                                     variable=self.rename_option_var,
                                                     values=[
@@ -223,8 +228,10 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                                                         "Before X characters", 
                                                         "After expression", 
                                                         "Before expression", 
-                                                        "Remove expression only"
+                                                        "Remove expression only",
+                                                        "Ordered renaming"
                                                     ],
+                                                    command=self._on_rename_mode_change,
                                                     fg_color=GOLD,
                                                     button_color=DARK_GOLD,
                                                     button_hover_color=GOLD,
@@ -232,6 +239,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                                                     dropdown_fg_color=DARK_GRAY,
                                                     dropdown_text_color=GOLD)
         self.rename_option_menu.pack(side="left", padx=5)
+        
+        # Trigger the mode change manually for the default value
+        self.after(100, lambda: self._on_rename_mode_change("Ordered renaming"))
+
+        # Input Entry (for X or Expression)
 
         # Input Entry (for X or Expression)
         self.rename_input = ctk.CTkEntry(options_frame, placeholder_text="Value (X or Expression)", 
@@ -310,6 +322,22 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
     # --- Logic: Renaming ---
 
+    def _on_rename_mode_change(self, choice):
+        if choice == "Ordered renaming":
+            self.rename_input.pack_forget()
+            self.rename_start_input.pack(side="left", padx=5)
+            self.rename_input.pack(side="left", padx=5, fill="x", expand=True)
+            self.rename_input.configure(placeholder_text="Pattern (e.g. File-@@@@@)")
+            if not self.rename_input.get():
+                self.rename_input.insert(0, "@@@@@")
+            if not self.rename_start_input.get():
+                self.rename_start_input.insert(0, "1")
+        else:
+            self.rename_start_input.pack_forget()
+            self.rename_input.configure(placeholder_text="Value (X or Expression)")
+            # Clear default pattern if present to avoid confusion? 
+            # Or leave it. Let's leave it, user might switch back.
+
     def add_files_rename(self):
         files = filedialog.askopenfilenames(title="Select files to rename")
         for f in files:
@@ -375,6 +403,29 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
                 elif mode == "Remove expression only":
                     new_name = name.replace(value, "")
+
+                elif mode == "Ordered renaming":
+                    # value is Pattern
+                    pattern = value
+                    start_num_str = self.rename_start_input.get()
+                    try:
+                        start_num = int(start_num_str) if start_num_str else 1
+                    except ValueError:
+                         messagebox.showerror("Error", "Start Number must be an integer.")
+                         return
+
+                    current_num = start_num + (count) # count starts at 0 for first file in loop
+                    
+                    # Regex to find sequences of @
+                    # We replace each sequence with the formatted number
+                    # But the prompt says "The @ symbol ... means a number filled to that amount of zeros."
+                    # Implies we replace the @ block with the number padded to block length.
+                    
+                    def replace_match(match):
+                        length = len(match.group(0))
+                        return str(current_num).zfill(length)
+                    
+                    new_name = re.sub(r'@+', replace_match, pattern)
 
                 if new_name == name:
                     continue
