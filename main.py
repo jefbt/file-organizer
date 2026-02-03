@@ -164,6 +164,36 @@ class SortableFileList(ctk.CTkScrollableFrame):
         self.drag_source = None
         self.drag_source_item = None
 
+    def repack_items(self):
+        for lbl in self.labels:
+            lbl.pack_forget()
+        for lbl in self.labels:
+            lbl.pack(fill="x", padx=5, pady=2)
+
+    def invert_order(self):
+        self.file_paths.reverse()
+        self.labels.reverse()
+        self.repack_items()
+
+    def sort_by_name(self):
+        if not self.file_paths: return
+        combined = list(zip(self.file_paths, self.labels))
+        combined.sort(key=lambda x: os.path.basename(x[0]).lower())
+        self.file_paths, self.labels = zip(*combined)
+        self.file_paths = list(self.file_paths)
+        self.labels = list(self.labels)
+        self.repack_items()
+
+    def sort_by_date(self):
+        if not self.file_paths: return
+        combined = list(zip(self.file_paths, self.labels))
+        # Sort by modification time, handling potential missing files
+        combined.sort(key=lambda x: os.path.getmtime(x[0]) if os.path.exists(x[0]) else 0)
+        self.file_paths, self.labels = zip(*combined)
+        self.file_paths = list(self.file_paths)
+        self.labels = list(self.labels)
+        self.repack_items()
+
 class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self):
         super().__init__()
@@ -267,9 +297,29 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                                             fg_color=GOLD, text_color=BLACK, hover_color=DARK_GOLD)
         self.btn_run_rename.pack(side="right", padx=5)
 
+        self.btn_sort_date_rename = ctk.CTkButton(btn_frame, text="Sort Date", width=80, 
+                                              fg_color=DARK_GRAY, border_color=GOLD, border_width=2, 
+                                              text_color=GOLD, hover_color="#333333")
+        self.btn_sort_date_rename.pack(side="right", padx=5)
+
+        self.btn_sort_name_rename = ctk.CTkButton(btn_frame, text="Sort Name", width=80,
+                                              fg_color=DARK_GRAY, border_color=GOLD, border_width=2, 
+                                              text_color=GOLD, hover_color="#333333")
+        self.btn_sort_name_rename.pack(side="right", padx=5)
+
+        self.btn_invert_rename = ctk.CTkButton(btn_frame, text="Invert", width=60,
+                                              fg_color=DARK_GRAY, border_color=GOLD, border_width=2, 
+                                              text_color=GOLD, hover_color="#333333")
+        self.btn_invert_rename.pack(side="right", padx=5)
+
         # File List (Scrollable Frame imitating a list)
-        self.rename_file_list_frame = SortableFileList(tab, fg_color=BLACK, border_color=GOLD, border_width=1, label_text="Files to Rename", label_text_color=GOLD)
+        self.rename_file_list_frame = SortableFileList(tab, fg_color=BLACK, border_color=GOLD, border_width=1)
         self.rename_file_list_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Configure commands for sort buttons NOW that list frame exists
+        self.btn_sort_date_rename.configure(command=self.rename_file_list_frame.sort_by_date)
+        self.btn_sort_name_rename.configure(command=self.rename_file_list_frame.sort_by_name)
+        self.btn_invert_rename.configure(command=self.rename_file_list_frame.invert_order)
 
     def setup_converting_tab(self):
         tab = self.tabview.tab("Converting")
@@ -316,9 +366,29 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                                              fg_color=GOLD, text_color=BLACK, hover_color=DARK_GOLD)
         self.btn_run_convert.pack(side="right", padx=5)
 
+        self.btn_sort_date_convert = ctk.CTkButton(btn_frame, text="Sort Date", width=80, 
+                                              fg_color=DARK_GRAY, border_color=GOLD, border_width=2, 
+                                              text_color=GOLD, hover_color="#333333")
+        self.btn_sort_date_convert.pack(side="right", padx=5)
+
+        self.btn_sort_name_convert = ctk.CTkButton(btn_frame, text="Sort Name", width=80, 
+                                              fg_color=DARK_GRAY, border_color=GOLD, border_width=2, 
+                                              text_color=GOLD, hover_color="#333333")
+        self.btn_sort_name_convert.pack(side="right", padx=5)
+
+        self.btn_invert_convert = ctk.CTkButton(btn_frame, text="Invert", width=60, 
+                                              fg_color=DARK_GRAY, border_color=GOLD, border_width=2, 
+                                              text_color=GOLD, hover_color="#333333")
+        self.btn_invert_convert.pack(side="right", padx=5)
+
         # File List
-        self.convert_file_list_frame = SortableFileList(tab, allowed_extensions=[".jpg", ".jpeg", ".png", ".webp", ".bmp", ".ico", ".tiff", ".gif"], fg_color=BLACK, border_color=GOLD, border_width=1, label_text="Files to Convert", label_text_color=GOLD)
+        self.convert_file_list_frame = SortableFileList(tab, allowed_extensions=[".jpg", ".jpeg", ".png", ".webp", ".bmp", ".ico", ".tiff", ".gif"], fg_color=BLACK, border_color=GOLD, border_width=1)
         self.convert_file_list_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Configure commands for sort buttons NOW that list frame exists
+        self.btn_sort_date_convert.configure(command=self.convert_file_list_frame.sort_by_date)
+        self.btn_sort_name_convert.configure(command=self.convert_file_list_frame.sort_by_name)
+        self.btn_invert_convert.configure(command=self.convert_file_list_frame.invert_order)
 
     # --- Logic: Renaming ---
 
