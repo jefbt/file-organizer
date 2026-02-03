@@ -4,6 +4,7 @@ from tkinter import filedialog, messagebox
 import os
 from PIL import Image
 import threading
+from tkinterdnd2 import TkinterDnD, DND_FILES
 
 # --- Theme Configuration ---
 GOLD = "#D4AF37"
@@ -16,9 +17,156 @@ GOLD_TEXT = "#D4AF37"
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")  # We will override colors manually
 
-class App(ctk.CTk):
+class SortableFileList(ctk.CTkScrollableFrame):
+    def __init__(self, master, allowed_extensions=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.allowed_extensions = [ext.lower() for ext in allowed_extensions] if allowed_extensions else None
+        self.file_paths = []
+        self.labels = []
+        self.drag_source = None
+        self.drag_source_index = None
+        self.dragging = False
+
+        # Configure drag visuals
+        self.drag_highlight_color = "#333333"
+
+        # Register Drop
+        self.drop_target_register(DND_FILES)
+        self.dnd_bind('<<Drop>>', self._on_drop)
+        
+        # Register Drop on internal widgets (Canvas etc) because they cover the main frame
+        children_widgets = []
+        try:
+            if hasattr(self, "_parent_canvas"):
+                children_widgets.append(self._parent_canvas)
+            if hasattr(self, "_scrollbar"):
+                children_widgets.append(self._scrollbar)
+        except Exception:
+            pass
+
+        for widget in children_widgets:
+            try:
+                widget.drop_target_register(DND_FILES)
+                widget.dnd_bind('<<Drop>>', self._on_drop)
+            except Exception as e:
+                print(f"Failed to register DND for {widget}: {e}")
+
+    def _on_drop(self, event):
+        if event.data:
+            try:
+                files = self.tk.splitlist(event.data)
+                for f in files:
+                    self.add_file(f)
+            except Exception as e:
+                print(f"Drop error: {e}")
+
+    def add_file(self, path):
+        if path in self.file_paths:
+            return
+
+        if self.allowed_extensions:
+            _, ext = os.path.splitext(path)
+            if ext.lower() not in self.allowed_extensions:
+                return
+
+        self.file_paths.append(path)
+        
+        # Create a container frame for the label to handle events better or just the label
+        # Using CTkLabel directly
+        lbl = ctk.CTkLabel(self, text=os.path.basename(path), text_color="white", anchor="w", cursor="hand2")
+        lbl.pack(fill="x", padx=5, pady=2)
+        
+        # Bind events for Drag and Drop (Internal Reorder)
+        lbl.bind("<Button-1>", self._on_drag_start)
+        lbl.bind("<B1-Motion>", self._on_drag_motion)
+        lbl.bind("<ButtonRelease-1>", self._on_drag_stop)
+        
+        # Register Label as Drop Target for External Files
+        # This is CRITICAL because the label covers the frame background
+        try:
+            lbl.drop_target_register(DND_FILES)
+            lbl.dnd_bind('<<Drop>>', self._on_drop)
+        except Exception:
+            pass # In case widget doesn't support it (though CTkLabel usually wraps a widget that does if root is DnD)
+
+        self.labels.append(lbl)
+
+    def clear(self):
+        for lbl in self.labels:
+            lbl.destroy()
+        self.labels = []
+        self.file_paths = []
+
+    def get_files(self):
+        return self.file_paths
+
+    def _on_drag_start(self, event):
+        self.dragging = True
+        self.drag_source = event.widget
+        # Find the CTkLabel wrapper if event.widget is the internal tkinter label
+        # In CTk, event.widget from bind on CTkLabel is usually the internal tkinter label/canvas.
+        # We need to match it to our self.labels list.
+        
+        # Search for the label object that owns this widget or is this widget
+        self.drag_source_item = None
+        self.drag_source_index = -1
+        
+        # CTk specific: event.widget might be the internal widget.
+        # We can iterate our labels and check which one matches or contains event.widget
+        for i, lbl in enumerate(self.labels):
+            if lbl == event.widget or event.widget in lbl.winfo_children() or str(event.widget).startswith(str(lbl)):
+                # The str(event.widget).startswith(str(lbl)) check helps if the event comes from a child
+                self.drag_source_item = lbl
+                self.drag_source_index = i
+                break
+        
+        if self.drag_source_item:
+            self.drag_source_item.configure(fg_color=self.drag_highlight_color)
+
+    def _on_drag_motion(self, event):
+        if not self.dragging or self.drag_source_item is None:
+            return
+
+        y_root = self.winfo_pointery()
+        
+        # Check which item we are over
+        target_index = -1
+        for i, lbl in enumerate(self.labels):
+            lbl_y = lbl.winfo_rooty()
+            lbl_h = lbl.winfo_height()
+            # Add some buffer or just check strict bounds
+            if lbl_y <= y_root <= lbl_y + lbl_h:
+                target_index = i
+                break
+        
+        if target_index != -1 and target_index != self.drag_source_index:
+            # Swap logic
+            # Move element in lists
+            item = self.labels.pop(self.drag_source_index)
+            path = self.file_paths.pop(self.drag_source_index)
+            
+            self.labels.insert(target_index, item)
+            self.file_paths.insert(target_index, path)
+            
+            self.drag_source_index = target_index
+            
+            # Re-pack everything
+            for lbl in self.labels:
+                lbl.pack_forget()
+            for lbl in self.labels:
+                lbl.pack(fill="x", padx=5, pady=2)
+
+    def _on_drag_stop(self, event):
+        self.dragging = False
+        if self.drag_source_item:
+            self.drag_source_item.configure(fg_color="transparent")
+        self.drag_source = None
+        self.drag_source_item = None
+
+class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self):
         super().__init__()
+        self.TkdndVersion = TkinterDnD._require(self)
 
         self.title("Organizer - Gold Edition")
         self.geometry("900x700")
@@ -108,11 +256,8 @@ class App(ctk.CTk):
         self.btn_run_rename.pack(side="right", padx=5)
 
         # File List (Scrollable Frame imitating a list)
-        self.rename_file_list_frame = ctk.CTkScrollableFrame(tab, fg_color=BLACK, border_color=GOLD, border_width=1, label_text="Files to Rename", label_text_color=GOLD)
+        self.rename_file_list_frame = SortableFileList(tab, fg_color=BLACK, border_color=GOLD, border_width=1, label_text="Files to Rename", label_text_color=GOLD)
         self.rename_file_list_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
-
-        self.rename_files = [] # List of paths
-        self.rename_file_labels = []
 
     def setup_converting_tab(self):
         tab = self.tabview.tab("Converting")
@@ -160,31 +305,22 @@ class App(ctk.CTk):
         self.btn_run_convert.pack(side="right", padx=5)
 
         # File List
-        self.convert_file_list_frame = ctk.CTkScrollableFrame(tab, fg_color=BLACK, border_color=GOLD, border_width=1, label_text="Files to Convert", label_text_color=GOLD)
+        self.convert_file_list_frame = SortableFileList(tab, allowed_extensions=[".jpg", ".jpeg", ".png", ".webp", ".bmp", ".ico", ".tiff", ".gif"], fg_color=BLACK, border_color=GOLD, border_width=1, label_text="Files to Convert", label_text_color=GOLD)
         self.convert_file_list_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
-
-        self.convert_files = []
-        self.convert_file_labels = []
 
     # --- Logic: Renaming ---
 
     def add_files_rename(self):
         files = filedialog.askopenfilenames(title="Select files to rename")
         for f in files:
-            if f not in self.rename_files:
-                self.rename_files.append(f)
-                lbl = ctk.CTkLabel(self.rename_file_list_frame, text=os.path.basename(f), text_color="white", anchor="w")
-                lbl.pack(fill="x", padx=5, pady=2)
-                self.rename_file_labels.append(lbl)
+            self.rename_file_list_frame.add_file(f)
 
     def clear_list_rename(self):
-        self.rename_files = []
-        for lbl in self.rename_file_labels:
-            lbl.destroy()
-        self.rename_file_labels = []
+        self.rename_file_list_frame.clear()
 
     def run_rename(self):
-        if not self.rename_files:
+        rename_files = self.rename_file_list_frame.get_files()
+        if not rename_files:
             messagebox.showwarning("Warning", "No files selected.")
             return
         
@@ -197,7 +333,7 @@ class App(ctk.CTk):
 
         count = 0
         try:
-            for file_path in self.rename_files:
+            for file_path in rename_files:
                 directory = os.path.dirname(file_path)
                 filename = os.path.basename(file_path)
                 name, ext = os.path.splitext(filename)
@@ -270,20 +406,14 @@ class App(ctk.CTk):
         files = filedialog.askopenfilenames(title="Select images to convert", 
                                             filetypes=[("Images", "*.jpg *.jpeg *.png *.webp *.bmp *.ico *.tiff *.gif")])
         for f in files:
-            if f not in self.convert_files:
-                self.convert_files.append(f)
-                lbl = ctk.CTkLabel(self.convert_file_list_frame, text=os.path.basename(f), text_color="white", anchor="w")
-                lbl.pack(fill="x", padx=5, pady=2)
-                self.convert_file_labels.append(lbl)
+            self.convert_file_list_frame.add_file(f)
 
     def clear_list_convert(self):
-        self.convert_files = []
-        for lbl in self.convert_file_labels:
-            lbl.destroy()
-        self.convert_file_labels = []
+        self.convert_file_list_frame.clear()
 
     def run_convert(self):
-        if not self.convert_files:
+        convert_files = self.convert_file_list_frame.get_files()
+        if not convert_files:
             messagebox.showwarning("Warning", "No files selected.")
             return
 
@@ -304,7 +434,7 @@ class App(ctk.CTk):
 
         count = 0
         try:
-            for file_path in self.convert_files:
+            for file_path in convert_files:
                 directory = os.path.dirname(file_path)
                 filename = os.path.basename(file_path)
                 name, _ = os.path.splitext(filename)
