@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
 import re
+import sys
 from PIL import Image
 import threading
 from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -312,6 +313,18 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.title("Organizer - Gold Edition")
         self.geometry("900x700")
         self.configure(fg_color=BLACK)
+
+        icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+        if getattr(sys, "_MEIPASS", None):
+            bundled_icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+            if os.path.exists(bundled_icon_path):
+                icon_path = bundled_icon_path
+
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
 
         # Main Layout
         self.grid_columnconfigure(0, weight=1)

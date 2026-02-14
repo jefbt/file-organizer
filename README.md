@@ -51,15 +51,19 @@ To create a standalone `.exe` file using PyInstaller:
    Run the following command in PowerShell from the project root. This ensures `customtkinter` and `tkinterdnd2` assets are correctly bundled.
 
    ```powershell
-   uv run pyinstaller --noconfirm --onedir --windowed --name "File Organizer" --icon "NONE" `
+   uv run pyinstaller --noconfirm --onedir --windowed --name "File Organizer" --icon "icon.ico" `
      --add-data ".venv/Lib/site-packages/customtkinter;customtkinter/" `
      --add-data ".venv/Lib/site-packages/tkinterdnd2;tkinterdnd2/" `
      main.py
    ```
 
    ```powershell
-   uv run pyinstaller --noconfirm --onedir --windowed --name "File Organizer" --icon "NONE" --add-data ".venv/Lib/site-packages/customtkinter;customtkinter/" --add-data ".venv/Lib/site-packages/tkinterdnd2;tkinterdnd2/" main.py
-     main.py
+   uv run pyinstaller --noconfirm --onedir --windowed --name "File Organizer" --icon "icon.ico" --add-data ".venv/Lib/site-packages/customtkinter;customtkinter/" --add-data ".venv/Lib/site-packages/tkinterdnd2;tkinterdnd2/" main.py
+   ```
+
+   one file
+   ```powershell
+   uv run pyinstaller --noconfirm --onefile --windowed --name "File Organizer" --icon "icon.ico" --add-data ".venv/Lib/site-packages/customtkinter;customtkinter/" --add-data ".venv/Lib/site-packages/tkinterdnd2;tkinterdnd2/" main.py
    ```
 
    > **Note**: If your virtual environment path is different, replace `.venv/Lib/site-packages/...` with the correct path to your site-packages.
