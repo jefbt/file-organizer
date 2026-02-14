@@ -467,7 +467,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                                                      dropdown_text_color=GOLD)
         self.convert_option_menu.pack(side="left", padx=5)
 
-        self.keep_old_files_var = ctk.BooleanVar(value=True)
+        self.keep_old_files_var = ctk.BooleanVar(value=False)
         self.check_keep_files = ctk.CTkCheckBox(options_frame, text="Keep old files", variable=self.keep_old_files_var,
                                                 fg_color=GOLD, checkmark_color=BLACK, hover_color=DARK_GOLD, text_color=GOLD)
         self.check_keep_files.pack(side="left", padx=20)
