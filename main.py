@@ -52,12 +52,124 @@ class SortableFileList(ctk.CTkScrollableFrame):
             except Exception as e:
                 print(f"Failed to register DND for {widget}: {e}")
 
+    def _is_valid_file(self, path):
+        if not os.path.isfile(path):
+            return False
+
+        if self.allowed_extensions:
+            _, ext = os.path.splitext(path)
+            if ext.lower() not in self.allowed_extensions:
+                return False
+
+        return True
+
+    def _folder_has_subfolders(self, folder_path):
+        try:
+            with os.scandir(folder_path) as it:
+                for entry in it:
+                    if entry.is_dir():
+                        return True
+        except Exception:
+            return False
+        return False
+
+    def _ask_folder_drop_mode(self):
+        result = {"value": None}
+        win = ctk.CTkToplevel(self.winfo_toplevel())
+        win.title("What files to add")
+        win.resizable(False, False)
+
+        container = ctk.CTkFrame(win, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        lbl = ctk.CTkLabel(container, text="What files to add", text_color=GOLD)
+        lbl.pack(pady=(0, 15))
+
+        def choose(val):
+            result["value"] = val
+            try:
+                win.grab_release()
+            except Exception:
+                pass
+            win.destroy()
+
+        btn_folder_only = ctk.CTkButton(container, text="Folder only", command=lambda: choose("folder_only"),
+                                        fg_color=GOLD, text_color=BLACK, hover_color=DARK_GOLD)
+        btn_folder_only.pack(fill="x", pady=5)
+
+        btn_direct = ctk.CTkButton(container, text="Direct Subfolders", command=lambda: choose("direct_subfolders"),
+                                   fg_color=GOLD, text_color=BLACK, hover_color=DARK_GOLD)
+        btn_direct.pack(fill="x", pady=5)
+
+        btn_all = ctk.CTkButton(container, text="All children", command=lambda: choose("all_children"),
+                                fg_color=GOLD, text_color=BLACK, hover_color=DARK_GOLD)
+        btn_all.pack(fill="x", pady=5)
+
+        win.protocol("WM_DELETE_WINDOW", lambda: choose(None))
+
+        try:
+            win.transient(self.winfo_toplevel())
+            win.grab_set()
+        except Exception:
+            pass
+
+        self.wait_window(win)
+        return result["value"]
+
+    def _iter_folder_files(self, folder_path, mode):
+        if mode == "folder_only":
+            try:
+                with os.scandir(folder_path) as it:
+                    for entry in it:
+                        if entry.is_file() and self._is_valid_file(entry.path):
+                            yield entry.path
+            except Exception:
+                return
+            return
+
+        if mode == "direct_subfolders":
+            yield from self._iter_folder_files(folder_path, "folder_only")
+            try:
+                with os.scandir(folder_path) as it:
+                    for entry in it:
+                        if entry.is_dir():
+                            yield from self._iter_folder_files(entry.path, "folder_only")
+            except Exception:
+                return
+            return
+
+        if mode == "all_children":
+            try:
+                for root, _, files in os.walk(folder_path):
+                    for name in files:
+                        p = os.path.join(root, name)
+                        if self._is_valid_file(p):
+                            yield p
+            except Exception:
+                return
+            return
+
+    def add_path(self, path):
+        if os.path.isdir(path):
+            mode = "folder_only"
+            if self._folder_has_subfolders(path):
+                chosen = self._ask_folder_drop_mode()
+                if not chosen:
+                    return
+                mode = chosen
+
+            for file_path in self._iter_folder_files(path, mode):
+                self.add_file(file_path)
+            return
+
+        self.add_file(path)
+
     def _on_drop(self, event):
         if event.data:
             try:
                 files = self.tk.splitlist(event.data)
                 for f in files:
-                    self.add_file(f)
+                    self.add_path(f)
             except Exception as e:
                 print(f"Drop error: {e}")
 
@@ -65,10 +177,8 @@ class SortableFileList(ctk.CTkScrollableFrame):
         if path in self.file_paths:
             return
 
-        if self.allowed_extensions:
-            _, ext = os.path.splitext(path)
-            if ext.lower() not in self.allowed_extensions:
-                return
+        if not self._is_valid_file(path):
+            return
 
         self.file_paths.append(path)
         
